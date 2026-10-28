@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Model Architecture & Pipeline · Cyberbullying Detector{% endblock %}
+{% block content %}
+<div class="page-intro">
+  <h1>Model Architecture & Pipeline</h1>
+  <p class="lede">An overview of the machine learning pipeline powering cyberbullying classification, from text normalization and vectorization to linear margin classification and feature explainability.</p>
+
+  <div class="meta-strip">
+    <div class="meta-item">
+      <span class="meta-label">Classifier:</span>
+      <span class="meta-value">{{ info.model }}</span>
+    </div>
+    <span class="meta-divider" aria-hidden="true">•</span>
+    <div class="meta-item">
+      <span class="meta-label">Vocabulary:</span>
+      <span class="meta-value">{{ '{:,}'.format(info.features) }} features</span>
+    </div>
+    <span class="meta-divider" aria-hidden="true">•</span>
+    <div class="meta-item">
+      <span class="meta-label">N-gram range:</span>
+      <span class="meta-value">({{ info.ngram[0] }}, {{ info.ngram[1] }})</span>
+    </div>
+  </div>
+</div>
+
+<div class="split-workbench">
+  <!-- Left Side: Pipeline Stages & API -->
+  <div class="column-stack">
+    <section class="panel pipeline-panel" aria-label="Processing Pipeline">
+      <div class="panel-header">
+        <h2 class="panel-title">Processing Pipeline</h2>
+        <span class="status-meta">4 sequential stages</span>
+      </div>
+
+      <div class="panel-body">
+        <div class="pipeline-flow">
+          <article class="flow-stage">
+            <div class="stage-badge">Stage 1</div>
+            <div class="stage-content">
+              <h3 class="stage-title">Text Preprocessing & Normalization</h3>
+              <p class="stage-desc">Input text is converted to lowercase. Regular expressions strip external URLs (<code>http\S+|www\.\S+</code>), social user mentions (<code>@\w+</code>), and numerical digits. ASCII punctuation tables remove symbols, and standard English stopwords are filtered out to isolate informative lexical&nbsp;tokens.</p>
+            </div>
+          </article>
+
+          <article class="flow-stage">
+            <div class="stage-badge">Stage 2</div>
+            <div class="stage-content">
+              <h3 class="stage-title">Feature Extraction (TF-IDF)</h3>
+              <p class="stage-desc">The preprocessed tokens are mapped into a high-dimensional sparse matrix using Term Frequency-Inverse Document Frequency (TF-IDF) over a fixed vocabulary of {{ '{:,}'.format(info.features) }} features. Both single words (unigrams) and adjacent word pairs (bigrams) are modeled with sublinear term-frequency&nbsp;scaling.</p>
+            </div>
+          </article>
+
+          <article class="flow-stage">
+            <div class="stage-badge">Stage 3</div>
+            <div class="stage-content">
+              <h3 class="stage-title">Linear SVM Classification</h3>
+              <p class="stage-desc">A multi-class Support Vector Classifier (<code>LinearSVC</code>) computes signed geometric distances to class-separating hyperplanes: \(s_k = \mathbf{w}_k^T \mathbf{x} + b_k\). The maximum margin determines the predicted category, optimized for high precision on sparse text&nbsp;data.</p>
+            </div>
+          </article>
+
+          <article class="flow-stage">
+            <div class="stage-badge">Stage 4</div>
+            <div class="stage-content">
+              <h3 class="stage-title">Word Influence & Explainability</h3>
+              <p class="stage-desc">Attribution weights are derived from the element-wise product of active feature weights and word frequencies for the winning class. Tokens producing the highest positive contribution are highlighted to provide immediate interpretability for human&nbsp;moderators.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- API Ingestion -->
+    <section class="panel api-panel" aria-label="API Integration">
+      <div class="panel-header">
+        <h2 class="panel-title">API Integration</h2>
+        <button type="button" class="btn-copy" id="copy-curl-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span id="copy-text">Copy cURL</span>
+        </button>
+      </div>
+      <div class="panel-body">
+        <p class="api-note">Send a POST request with a JSON payload to integrate classification into automated moderation workflows:</p>
+        <div class="code-block-shell">
+          <pre id="curl-code"><code>curl -X POST {{ request.host_url }}api/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Sample text for real-time lexical inspection"}'</code></pre>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Right Side: Model Constraints & Classes -->
+  <aside class="column-stack">
+    <section class="panel" aria-label="Evaluated Categories">
+      <div class="panel-header">
+        <h2 class="panel-title">Evaluated Categories</h2>
+      </div>
+      <div class="panel-body">
+        <div class="categories-list">
+          {% for c in info.classes %}
+          <div class="category-row {% if c in ['none', '0', 'not_cyberbullying', 'neither'] %}cat-safe{% else %}cat-threat{% endif %}">
+            <div class="cat-info">
+              <span class="cat-dot" aria-hidden="true"></span>
+              <strong class="cat-name">
+                {% if c in ['none', '0', 'not_cyberbullying', 'neither'] %}
+                  Non-Cyberbullying (Clean)
+                {% elif c == 'gender_sexism' or c == 'sexism' or c == 'gender' %}
+                  Sexism / Gender Harassment
+                {% elif c == 'racism_ethnicity' or c == 'racism' or c == 'ethnicity' %}
+                  Racism / Ethnic Harassment
+                {% elif c == 'religion' %}
+                  Religious Harassment
+                {% elif c == 'age' %}
+                  Age-Based Bullying
+                {% elif c == 'other_cyberbullying' %}
+                  Other Targeted Bullying
+                {% else %}
+                  {{ c|replace('_', ' ')|title }}
+                {% endif %}
+              </strong>
+            </div>
+            <span class="badge {% if c in ['none', '0', 'not_cyberbullying', 'neither'] %}badge-clear{% else %}badge-flag{% endif %}">
+              {% if c in ['none', '0', 'not_cyberbullying', 'neither'] %}Clean{% else %}Flagged{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Confidence Scores">
+      <div class="panel-header">
+        <h2 class="panel-title">Confidence Scores</h2>
+      </div>
+      <div class="panel-body">
+        <p class="sidebar-text">Support Vector Machines optimize geometric decision margins rather than probabilities. The confidence percentages displayed across this interface are produced by applying a normalized softmax transformation to the raw margin scores, serving as relative proximity metrics rather than absolute Bayesian&nbsp;probabilities.</p>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Limitations and Best Practices">
+      <div class="panel-header">
+        <h2 class="panel-title">Limitations & Best Practices</h2>
+      </div>
+      <div class="panel-body">
+        <ul class="clean-bullet-list">
+          <li><strong>Context & Sarcasm:</strong> Bag-of-words models analyze token co-occurrence without deep syntactic parse trees. Sarcasm, rhetorical negation, or reclaimed vernacular may occasionally trigger false positives.</li>
+          <li><strong>Vernacular Drift:</strong> Online harassment slang evolves continuously. Periodic retraining on updated benchmarks is recommended.</li>
+          <li><strong>Human Review:</strong> This tool is designed to assist human moderators and triage high-volume feeds, not to replace human discretion on edge cases.</li>
+        </ul>
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}
